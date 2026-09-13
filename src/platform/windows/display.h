@@ -776,6 +776,16 @@ namespace platf::dxgi {
     vdd_frame_channel::channel_selection frame_channel_selection() const { return m_frameChannelSelection; }
     bool legacy_named_channel() const { return m_legacyNamedChannel; }
 
+    /**
+     * @brief The producer state this consumer is currently attached to.
+     * @details Compared against a fresh metadata snapshot on every wake-up path
+     *          so a producer resize or channel recreation is detected no matter
+     *          which event woke the consumer.
+     */
+    vdd_frame_channel::producer_channel_identity current_channel_identity() const {
+      return {m_channelGeneration, m_width, m_height, m_format};
+    }
+
   private:
     enum class sealed_channel_attempt {
       skipped,

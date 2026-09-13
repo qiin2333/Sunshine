@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace platf {
@@ -250,6 +251,38 @@ namespace platf::dxgi {
   static bool
   vdd_metadata_is_probe_valid(const SharedFrameMetadata &meta) {
     return static_cast<bool>(vdd_frame_channel::validate_metadata_for_probe(meta));
+  }
+
+  /**
+   * @brief Report whether the producer recreated or resized the channel.
+   * @details Shared by every consumer wake-up path. Keeping the comparison in one
+   *          place is deliberate: when only the frame-ready branch performed it, a
+   *          cursor-only wake could spin forever on an orphaned slot because the
+   *          old FrameReady event is never signalled again after a reconfigure.
+   */
+  static bool
+  vdd_producer_channel_changed(const SharedFrameMetadata &meta,
+                               const vdd_frame_channel::producer_channel_identity &known,
+                               std::string_view context) {
+    switch (vdd_frame_channel::detect_producer_channel_change(meta, known)) {
+      case vdd_frame_channel::producer_channel_change::generation:
+        BOOST_LOG(info) << "[vdd_capture] producer channel generation changed ("sv << context
+                        << "): old="sv << known.generation
+                        << " new="sv << vdd_frame_channel::metadata_channel_generation(meta.MetadataSequence)
+                        << "; requesting reinit"sv;
+        return true;
+      case vdd_frame_channel::producer_channel_change::resolution_or_format:
+        BOOST_LOG(info) << "[vdd_capture] producer resolution/format changed ("sv << context
+                        << "): "sv << known.width << "x"sv << known.height
+                        << " fmt="sv << static_cast<int>(known.format)
+                        << " -> "sv << meta.Width << "x"sv << meta.Height
+                        << " fmt="sv << meta.DxgiFormat
+                        << "; requesting reinit"sv;
+        return true;
+      case vdd_frame_channel::producer_channel_change::none:
+        break;
+    }
+    return false;
   }
 
   static bool
@@ -799,6 +832,24 @@ namespace platf::dxgi {
     }
 
     auto acquire_cursor_frame = [&]() -> capture_e {
+      // A cursor-only wake never consumes the frame-ready event, so it must
+      // validate the producer itself. After the producer recreates the channel
+      // the old FrameReady event is never signalled again: without these checks
+      // every subsequent wake would come from the cursor event, re-copy an
+      // orphaned slot and pin the encoder to a stale frame until the session is
+      // torn down and rebuilt.
+      SharedFrameMetadata cursor_meta {};
+      if (!vdd_frame_channel::read_stable_metadata(meta, cursor_meta)) {
+        BOOST_LOG(warning) << "[vdd_capture] unable to read stable metadata on a cursor-only wake; requesting reinit"sv;
+        return capture_e::reinit;
+      }
+      if (!vdd_metadata_is_attachable(cursor_meta, m_adapterLuid)) {
+        return capture_e::reinit;
+      }
+      if (vdd_producer_channel_changed(cursor_meta, current_channel_identity(), "cursor-only wake"sv)) {
+        return capture_e::reinit;
+      }
+
       // The last consumed producer slot is available as key 0 while the
       // desktop is static. Reacquire it briefly so cursor-only updates retain
       // the normal single-copy/zero-copy cost on actual desktop frames.
@@ -893,11 +944,9 @@ namespace platf::dxgi {
     if (!vdd_metadata_is_attachable(meta_snapshot, m_adapterLuid)) {
       return capture_e::reinit;
     }
-    const UINT16 frame_generation = vdd_frame_channel::metadata_channel_generation(meta_snapshot.MetadataSequence);
-    if (frame_generation != m_channelGeneration) {
-      BOOST_LOG(info) << "[vdd_capture] producer channel generation changed: old="sv
-                      << m_channelGeneration << " new="sv << frame_generation
-                      << "; requesting reinit"sv;
+    // Detect producer-side resize / channel recreation before taking the slot:
+    // the metadata block can change any time the swap chain is re-created.
+    if (vdd_producer_channel_changed(meta_snapshot, current_channel_identity(), "frame-ready"sv)) {
       return capture_e::reinit;
     }
 
@@ -926,18 +975,6 @@ namespace platf::dxgi {
     m_holdsKey = true;
     m_heldSlot = slot;
     m_cursorUpdatePending = false;
-
-    // Detect producer-side resize / format change: the metadata block can change
-    // any time the swap chain is re-created. If so, signal reinit so the upper
-    // layer reopens the shared texture.
-    if (meta_snapshot.Width != m_width || meta_snapshot.Height != m_height ||
-        static_cast<DXGI_FORMAT>(meta_snapshot.DxgiFormat) != m_format) {
-      BOOST_LOG(info) << "[vdd_capture] producer resolution/format changed, requesting reinit"sv;
-      m_keyedMutex[m_heldSlot]->ReleaseSync(0);
-      m_holdsKey = false;
-      m_heldSlot = 0;
-      return capture_e::reinit;
-    }
 
     const auto previous_replaced = m_replacedUnreadFrames;
     const auto previous_held = m_droppedConsumerHeldFrames;

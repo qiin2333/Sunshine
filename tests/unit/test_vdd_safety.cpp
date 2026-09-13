@@ -208,6 +208,81 @@ TEST(VddFrameChannelSafety, PrioritizesDesktopFrameOverPendingCursorRetry) {
             pending_cursor_action::wait_for_events);
 }
 
+TEST(VddFrameChannelSafety, DetectsProducerChannelRecreation) {
+  using namespace platf::dxgi::vdd_frame_channel;
+
+  auto meta = valid_vdd_metadata();
+  meta.MetadataSequence = 0x00070000u;  // generation 7, stable counter
+
+  producer_channel_identity attached {};
+  attached.generation = 7;
+  attached.width = meta.Width;
+  attached.height = meta.Height;
+  attached.format = static_cast<DXGI_FORMAT>(meta.DxgiFormat);
+
+  EXPECT_EQ(detect_producer_channel_change(meta, attached),
+            producer_channel_change::none);
+
+  // The producer bumps the generation whenever it recreates the exported
+  // channel. Missing this leaves the consumer bound to an orphaned slot.
+  auto recreated = meta;
+  recreated.MetadataSequence = 0x00080000u;
+  EXPECT_EQ(detect_producer_channel_change(recreated, attached),
+            producer_channel_change::generation);
+}
+
+TEST(VddFrameChannelSafety, DetectsProducerResizeAndFormatChange) {
+  using namespace platf::dxgi::vdd_frame_channel;
+
+  auto meta = valid_vdd_metadata();
+  meta.MetadataSequence = 0x00020000u;
+
+  producer_channel_identity attached {};
+  attached.generation = 2;
+  attached.width = meta.Width;
+  attached.height = meta.Height;
+  attached.format = static_cast<DXGI_FORMAT>(meta.DxgiFormat);
+
+  auto resized = meta;
+  resized.Width = 2560;
+  EXPECT_EQ(detect_producer_channel_change(resized, attached),
+            producer_channel_change::resolution_or_format);
+
+  auto shortened = meta;
+  shortened.Height = 1440;
+  EXPECT_EQ(detect_producer_channel_change(shortened, attached),
+            producer_channel_change::resolution_or_format);
+
+  auto reformatted = meta;
+  reformatted.DxgiFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+  EXPECT_EQ(detect_producer_channel_change(reformatted, attached),
+            producer_channel_change::resolution_or_format);
+
+  // A generation bump wins over the dimension comparison so the log names the
+  // stronger reason.
+  auto both = resized;
+  both.MetadataSequence = 0x00030000u;
+  EXPECT_EQ(detect_producer_channel_change(both, attached),
+            producer_channel_change::generation);
+}
+
+TEST(VddFrameChannelSafety, IgnoresSeqlockCounterWhenComparingGeneration) {
+  using namespace platf::dxgi::vdd_frame_channel;
+
+  auto meta = valid_vdd_metadata();
+  producer_channel_identity attached {};
+  attached.generation = 4;
+  attached.width = meta.Width;
+  attached.height = meta.Height;
+  attached.format = static_cast<DXGI_FORMAT>(meta.DxgiFormat);
+
+  // Low 16 bits are the seqlock counter and advance on every publish; they must
+  // not be mistaken for a channel recreation.
+  meta.MetadataSequence = 0x0004BEEEu;
+  EXPECT_EQ(detect_producer_channel_change(meta, attached),
+            producer_channel_change::none);
+}
+
 TEST(VddModeRefreshSafety, MatchesAdvertisedModesWithRefreshTolerance) {
   using namespace display_device;
 

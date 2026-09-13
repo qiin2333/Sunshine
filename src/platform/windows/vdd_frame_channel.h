@@ -247,6 +247,36 @@ namespace platf::dxgi::vdd_frame_channel {
     return (metadata_sequence_counter(metadata_sequence) & metadata_sequence_write_bit) == 0;
   }
 
+  // Producer state the consumer latched when it attached to the channel. Every
+  // wake-up path must compare a fresh metadata snapshot against this, otherwise
+  // a producer reconfigure stays invisible and the consumer keeps re-reading an
+  // orphaned slot forever.
+  struct producer_channel_identity {
+    UINT16 generation = 0;
+    UINT32 width = 0;
+    UINT32 height = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+  };
+
+  enum class producer_channel_change {
+    none,
+    generation,
+    resolution_or_format,
+  };
+
+  inline producer_channel_change
+  detect_producer_channel_change(const shared_frame_metadata_t &meta,
+                                 const producer_channel_identity &known) {
+    if (metadata_channel_generation(meta.MetadataSequence) != known.generation) {
+      return producer_channel_change::generation;
+    }
+    if (meta.Width != known.width || meta.Height != known.height ||
+        static_cast<DXGI_FORMAT>(meta.DxgiFormat) != known.format) {
+      return producer_channel_change::resolution_or_format;
+    }
+    return producer_channel_change::none;
+  }
+
   inline bool
   read_stable_metadata(const shared_frame_metadata_t *source,
                        shared_frame_metadata_t &snapshot,

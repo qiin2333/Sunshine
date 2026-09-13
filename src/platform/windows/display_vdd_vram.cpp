@@ -137,18 +137,16 @@ namespace platf::dxgi {
                              now;
 
     D3D11_TEXTURE2D_DESC desc {};
-    if (!cursor_only) {
-      current_frame->GetDesc(&desc);
-      if (desc.Width != static_cast<UINT>(width_before_rotation) ||
-          desc.Height != static_cast<UINT>(height_before_rotation) ||
-          desc.Format != capture_format) {
-        BOOST_LOG(info) << "[vdd] producer reconfigured: "sv
-                        << width_before_rotation << "x"sv << height_before_rotation
-                        << " " << dxgi_format_to_string(capture_format)
-                        << " -> "sv << desc.Width << "x"sv << desc.Height
-                        << " " << dxgi_format_to_string(desc.Format);
-        return capture_e::reinit;
-      }
+    current_frame->GetDesc(&desc);
+    if (desc.Width != static_cast<UINT>(width_before_rotation) ||
+        desc.Height != static_cast<UINT>(height_before_rotation) ||
+        desc.Format != capture_format) {
+      BOOST_LOG(info) << "[vdd] producer reconfigured: "sv
+                      << width_before_rotation << "x"sv << height_before_rotation
+                      << " " << dxgi_format_to_string(capture_format)
+                      << " -> "sv << desc.Width << "x"sv << desc.Height
+                      << " " << dxgi_format_to_string(desc.Format);
+      return capture_e::reinit;
     }
 
     auto composite_cursor = [&](ID3D11RenderTargetView *capture_rt) {
