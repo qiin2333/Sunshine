@@ -8,7 +8,9 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <mutex>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -52,6 +54,35 @@ namespace config {
 
   namespace {
     std::mutex config_file_mutex;
+
+    std::optional<std::string>
+    read_config_file_contents() {
+      const auto path = file_handler::path_from_utf8(sunshine.config_file);
+      std::error_code error;
+      const auto exists = fs::exists(path, error);
+      if (error) {
+        BOOST_LOG(warning) << "Failed to inspect config file: " << error.message();
+        return std::nullopt;
+      }
+      if (!exists) {
+        return std::string {};
+      }
+
+      std::ifstream input(path, std::ios::binary);
+      if (!input.is_open()) {
+        BOOST_LOG(warning) << "Failed to open config file for reading"sv;
+        return std::nullopt;
+      }
+      std::string contents {
+        std::istreambuf_iterator<char>(input),
+        std::istreambuf_iterator<char>()
+      };
+      if (input.bad()) {
+        BOOST_LOG(warning) << "Failed while reading config file"sv;
+        return std::nullopt;
+      }
+      return contents;
+    }
   }
 
   namespace nv {
@@ -1861,16 +1892,12 @@ namespace config {
   update_config(const std::map<std::string, std::string> &updates) {
     std::lock_guard lock { config_file_mutex };
     try {
-      // 读取现有配置文件
-      std::map<std::string, std::string> configMap;
-      try {
-        std::string fileContent = file_handler::read_file(sunshine.config_file.c_str());
-        auto existingConfig = parse_config(fileContent);
-        configMap.insert(existingConfig.begin(), existingConfig.end());
+      const auto file_content = read_config_file_contents();
+      if (!file_content) {
+        return false;
       }
-      catch (const std::exception &e) {
-        BOOST_LOG(debug) << "Failed to read existing config: " << e.what();
-      }
+      const auto existing_config = parse_config(*file_content);
+      std::map<std::string, std::string> configMap {existing_config.begin(), existing_config.end()};
 
       // 更新配置项，同时检查是否有变化
       bool hasChanged = false;
@@ -1894,7 +1921,7 @@ namespace config {
 
       if (!hasChanged) {
         BOOST_LOG(info) << "Config unchanged, skip writing";
-        return false;
+        return true;
       }
 
       // 按字母顺序写入配置文件
@@ -1909,12 +1936,33 @@ namespace config {
         BOOST_LOG(warning) << "Failed to write config file: " << sunshine.config_file;
         return false;
       }
+      if (const auto gamepad_update = updates.find("gamepad"); gamepad_update != updates.end()) {
+        const auto gamepad = configMap.find("gamepad");
+        platf::set_global_gamepad_mode(gamepad == configMap.end() ? "auto"sv : std::string_view {gamepad->second});
+      }
       BOOST_LOG(info) << "Config updated successfully";
       return true;
     }
     catch (const std::exception &e) {
       BOOST_LOG(warning) << "Failed to update config: " << e.what();
       return false;
+    }
+  }
+
+  std::optional<std::map<std::string, std::string>>
+  get_config_snapshot() {
+    std::lock_guard lock { config_file_mutex };
+    try {
+      const auto file_content = read_config_file_contents();
+      if (!file_content) {
+        return std::nullopt;
+      }
+      const auto config = parse_config(*file_content);
+      return std::map<std::string, std::string> {config.begin(), config.end()};
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(warning) << "Failed to read config snapshot: " << e.what();
+      return std::nullopt;
     }
   }
 
@@ -1940,16 +1988,12 @@ namespace config {
         "tray_locale",            // 由系统托盘控制，不通过Web UI修改
       };
 
-      // 读取现有配置文件（用于获取受保护字段的值和后续对比）
-      std::map<std::string, std::string> originalMap;
-      try {
-        std::string originalFileContent = file_handler::read_file(sunshine.config_file.c_str());
-        auto existingConfig = parse_config(originalFileContent);
-        originalMap.insert(existingConfig.begin(), existingConfig.end());
+      const auto original_file_content = read_config_file_contents();
+      if (!original_file_content) {
+        return false;
       }
-      catch (const std::exception &e) {
-        BOOST_LOG(debug) << "Failed to read existing config: " << e.what();
-      }
+      const auto existing_config = parse_config(*original_file_content);
+      std::map<std::string, std::string> originalMap {existing_config.begin(), existing_config.end()};
 
       // 使用 std::map 保证按字母顺序保存
       std::map<std::string, std::string> resultMap;
@@ -1995,6 +2039,9 @@ namespace config {
       else {
         BOOST_LOG(info) << "Config unchanged, skip writing";
       }
+
+      const auto gamepad = resultMap.find("gamepad");
+      platf::set_global_gamepad_mode(gamepad == resultMap.end() ? "auto"sv : std::string_view {gamepad->second});
 
       return true;
     }

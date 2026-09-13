@@ -60,7 +60,6 @@ namespace {
 
   nlohmann::json valid_json() {
     return {
-      {"ds5_enabled", true},
       {"ds5_audio_haptics", false},
       {"ds5_legacy_haptics_strength", 1.5},
       {"ds5_legacy_haptics_curve", 0.5},
@@ -70,8 +69,7 @@ namespace {
   }
 
   bool same_values(const ds5_config::settings_t &left, const ds5_config::settings_t &right) {
-    return left.enabled == right.enabled &&
-           left.audio_haptics == right.audio_haptics &&
+    return left.audio_haptics == right.audio_haptics &&
            left.legacy_strength == right.legacy_strength &&
            left.legacy_curve == right.legacy_curve &&
            left.legacy_noise_gate == right.legacy_noise_gate &&
@@ -87,10 +85,9 @@ TEST_F(Ds5ConfigTest, ResolvesBesideSelectedSunshineConfig) {
   EXPECT_TRUE(ds5_config::path_for({}).empty());
 }
 
-TEST_F(Ds5ConfigTest, MissingFileReturnsDisabledDefaults) {
+TEST_F(Ds5ConfigTest, MissingFileReturnsDefaults) {
   const auto result = ds5_config::load(path_);
   EXPECT_EQ(result.status, ds5_config::load_status_t::MISSING);
-  EXPECT_FALSE(result.settings.enabled);
   EXPECT_TRUE(result.settings.audio_haptics);
   EXPECT_DOUBLE_EQ(result.settings.legacy_strength, 1.0);
   EXPECT_DOUBLE_EQ(result.settings.legacy_curve, 0.5);
@@ -100,7 +97,7 @@ TEST_F(Ds5ConfigTest, MissingFileReturnsDisabledDefaults) {
 }
 
 TEST_F(Ds5ConfigTest, RejectsMalformedSchemaAndInvalidNumbers) {
-  write_json({{"ds5_enabled", true}});
+  write_json({{"ds5_audio_haptics", true}});
   EXPECT_EQ(ds5_config::load(path_).status, ds5_config::load_status_t::INVALID);
 
   auto input = valid_json();
@@ -115,18 +112,28 @@ TEST_F(Ds5ConfigTest, RejectsMalformedSchemaAndInvalidNumbers) {
   invalid.legacy_noise_gate = 0.061;
   EXPECT_FALSE(ds5_config::validate(invalid));
   invalid = {};
-  invalid.genshin_compatibility = true;
-  EXPECT_FALSE(ds5_config::validate(invalid));
-  invalid = {};
-  invalid.enabled = true;
   invalid.audio_haptics = false;
   invalid.genshin_compatibility = true;
   EXPECT_FALSE(ds5_config::validate(invalid));
 }
 
+TEST_F(Ds5ConfigTest, IgnoresRetiredEnabledFieldAndDropsItOnSave) {
+  auto input = valid_json();
+  input["ds5_enabled"] = true;
+  write_json(input);
+
+  const auto loaded = ds5_config::load(path_);
+  ASSERT_EQ(loaded.status, ds5_config::load_status_t::LOADED);
+  ASSERT_TRUE(ds5_config::save(path_, loaded.settings));
+
+  const auto saved = nlohmann::json::parse(read_text(path_));
+  EXPECT_FALSE(saved.contains("ds5_enabled"));
+  EXPECT_EQ(saved.size(), 5);
+}
+
 TEST_F(Ds5ConfigTest, SavesBacksUpAndReloadsCompleteSettings) {
-  const ds5_config::settings_t previous {true, true, 1.2, 0.8, 0.010};
-  auto replacement = ds5_config::settings_t {true, true, 2.0, 0.5, 0.006};
+  const ds5_config::settings_t previous {true, 1.2, 0.8, 0.010};
+  auto replacement = ds5_config::settings_t {true, 2.0, 0.5, 0.006};
   replacement.genshin_compatibility = true;
   replacement.revision = 9;
 
@@ -137,7 +144,6 @@ TEST_F(Ds5ConfigTest, SavesBacksUpAndReloadsCompleteSettings) {
 
   const auto loaded = ds5_config::load(path_);
   ASSERT_EQ(loaded.status, ds5_config::load_status_t::LOADED);
-  EXPECT_EQ(loaded.settings.enabled, replacement.enabled);
   EXPECT_EQ(loaded.settings.audio_haptics, replacement.audio_haptics);
   EXPECT_DOUBLE_EQ(loaded.settings.legacy_strength, replacement.legacy_strength);
   EXPECT_DOUBLE_EQ(loaded.settings.legacy_curve, replacement.legacy_curve);
@@ -148,16 +154,16 @@ TEST_F(Ds5ConfigTest, SavesBacksUpAndReloadsCompleteSettings) {
 }
 
 TEST_F(Ds5ConfigTest, PreparedSnapshotDoesNotPublishUntilCommit) {
-  const ds5_config::settings_t active {false, true, 1.0, 1.0, 0.020};
-  auto replacement = ds5_config::settings_t {true, false, 2.0, 0.5, 0.006};
+  const ds5_config::settings_t active {true, 1.0, 1.0, 0.020};
+  auto replacement = ds5_config::settings_t {false, 2.0, 0.5, 0.006};
   replacement.revision = active.revision + 1;
   ASSERT_TRUE(ds5_config::configure(active));
 
   auto prepared = ds5_config::prepare(replacement);
   ASSERT_TRUE(prepared);
-  EXPECT_FALSE(ds5_config::current().enabled);
+  EXPECT_TRUE(ds5_config::current().audio_haptics);
   ASSERT_TRUE(ds5_config::commit(std::move(prepared)));
-  EXPECT_TRUE(ds5_config::current().enabled);
+  EXPECT_FALSE(ds5_config::current().audio_haptics);
   EXPECT_DOUBLE_EQ(ds5_config::current().legacy_curve, 0.5);
   EXPECT_EQ(ds5_config::current().revision, replacement.revision);
 }
@@ -173,7 +179,7 @@ TEST_F(Ds5ConfigTest, ConditionalUpdateRequiresTheExactQueriedStrongValidator) {
   ASSERT_FALSE(snapshot.entity_tag.empty());
 
   auto replacement = initial;
-  replacement.enabled = true;
+  replacement.audio_haptics = false;
   using status_t = ds5_config::api::update_status_t;
   EXPECT_EQ(
     ds5_config::api::update_state(path_, replacement, std::nullopt).status,
@@ -191,7 +197,7 @@ TEST_F(Ds5ConfigTest, ConditionalUpdateRequiresTheExactQueriedStrongValidator) {
     );
   }
   EXPECT_EQ(ds5_config::current().revision, initial.revision);
-  EXPECT_FALSE(ds5_config::current().enabled);
+  EXPECT_TRUE(ds5_config::current().audio_haptics);
 }
 
 TEST_F(Ds5ConfigTest, ConditionalUpdateRejectsAStaleSnapshot) {
@@ -202,7 +208,7 @@ TEST_F(Ds5ConfigTest, ConditionalUpdateRejectsAStaleSnapshot) {
   const auto snapshot = ds5_config::api::query_state(path_);
 
   auto first = initial;
-  first.enabled = true;
+  first.legacy_strength = 1.25;
   const auto first_result = ds5_config::api::update_state(path_, first, snapshot.entity_tag);
   ASSERT_EQ(first_result.status, ds5_config::api::update_status_t::APPLIED);
   EXPECT_EQ(first_result.state.settings.revision, 8);
@@ -212,18 +218,16 @@ TEST_F(Ds5ConfigTest, ConditionalUpdateRejectsAStaleSnapshot) {
   stale.audio_haptics = false;
   const auto stale_result = ds5_config::api::update_state(path_, stale, snapshot.entity_tag);
   EXPECT_EQ(stale_result.status, ds5_config::api::update_status_t::PRECONDITION_FAILED);
-  EXPECT_TRUE(ds5_config::current().enabled);
   EXPECT_TRUE(ds5_config::current().audio_haptics);
   EXPECT_EQ(ds5_config::current().revision, 8);
 
   const auto disk = ds5_config::load(path_);
   ASSERT_EQ(disk.status, ds5_config::load_status_t::LOADED);
-  EXPECT_TRUE(disk.settings.enabled);
   EXPECT_TRUE(disk.settings.audio_haptics);
 }
 
 TEST_F(Ds5ConfigTest, ConditionalUpdateSkipsUnchangedPersistenceAndPublication) {
-  auto initial = ds5_config::settings_t {true, false, 1.5, 0.5, 0.006};
+  auto initial = ds5_config::settings_t {false, 1.5, 0.5, 0.006};
   initial.revision = 11;
   ASSERT_TRUE(ds5_config::configure(initial));
   ASSERT_TRUE(ds5_config::save(path_, initial));
@@ -249,7 +253,7 @@ TEST_F(Ds5ConfigTest, ConditionalUpdateAllowsOnlyOneConcurrentWriterPerSnapshot)
   const auto snapshot = ds5_config::api::query_state(path_);
 
   auto first = initial;
-  first.enabled = true;
+  first.legacy_strength = 1.25;
   auto second = initial;
   second.audio_haptics = false;
   std::optional<ds5_config::api::update_result_t> first_result;
@@ -313,16 +317,16 @@ TEST_F(Ds5ConfigTest, InvalidStoreBlocksConditionalUpdate) {
   auto active = ds5_config::settings_t {};
   active.revision = 5;
   ASSERT_TRUE(ds5_config::configure(active));
-  write_json({{"ds5_enabled", true}});
+  write_json({{"ds5_audio_haptics", true}});
   const auto snapshot = ds5_config::api::query_state(path_);
   ASSERT_EQ(snapshot.disk_status, ds5_config::load_status_t::INVALID);
 
   auto replacement = active;
-  replacement.enabled = true;
+  replacement.legacy_strength = 1.25;
   const auto result = ds5_config::api::update_state(path_, replacement, snapshot.entity_tag);
   EXPECT_EQ(result.status, ds5_config::api::update_status_t::INVALID_STORE);
-  EXPECT_FALSE(ds5_config::current().enabled);
-  EXPECT_EQ(read_text(path_), nlohmann::json({{"ds5_enabled", true}}).dump(2) + '\n');
+  EXPECT_DOUBLE_EQ(ds5_config::current().legacy_strength, active.legacy_strength);
+  EXPECT_EQ(read_text(path_), nlohmann::json({{"ds5_audio_haptics", true}}).dump(2) + '\n');
 }
 
 TEST_F(Ds5ConfigTest, InvalidSettingsTakePrecedenceOverAnInvalidStore) {
@@ -330,7 +334,7 @@ TEST_F(Ds5ConfigTest, InvalidSettingsTakePrecedenceOverAnInvalidStore) {
   active.revision = 9;
   ASSERT_TRUE(ds5_config::configure(active));
   const auto before = ds5_config::current();
-  write_json({{"ds5_enabled", true}});
+  write_json({{"ds5_audio_haptics", true}});
   const auto snapshot = ds5_config::api::query_state(path_);
   ASSERT_EQ(snapshot.disk_status, ds5_config::load_status_t::INVALID);
 
@@ -345,8 +349,8 @@ TEST_F(Ds5ConfigTest, InvalidSettingsTakePrecedenceOverAnInvalidStore) {
 }
 
 TEST_F(Ds5ConfigTest, ConcurrentReadersObserveOnlyCompleteSnapshots) {
-  ds5_config::settings_t first {false, true, 1.0, 1.0, 0.020};
-  ds5_config::settings_t second {true, true, 4.0, 0.3, 0.002};
+  ds5_config::settings_t first {true, 1.0, 1.0, 0.020};
+  ds5_config::settings_t second {true, 4.0, 0.3, 0.002};
   second.genshin_compatibility = true;
   first.revision = 1;
   second.revision = 2;
@@ -365,11 +369,11 @@ TEST_F(Ds5ConfigTest, ConcurrentReadersObserveOnlyCompleteSnapshots) {
     }
     while (running.load(std::memory_order_acquire)) {
       const auto observed = ds5_config::current();
-      const bool is_first = !observed.enabled && observed.audio_haptics &&
+      const bool is_first = observed.audio_haptics &&
                             observed.legacy_strength == 1.0 && observed.legacy_curve == 1.0 &&
                             observed.legacy_noise_gate == 0.020 && !observed.genshin_compatibility &&
                             observed.revision == 1;
-      const bool is_second = observed.enabled && observed.audio_haptics &&
+      const bool is_second = observed.audio_haptics &&
                              observed.legacy_strength == 4.0 && observed.legacy_curve == 0.3 &&
                              observed.legacy_noise_gate == 0.002 && observed.genshin_compatibility &&
                              observed.revision == 2;

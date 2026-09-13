@@ -1093,10 +1093,16 @@ namespace platf {
   set_mouse_mode(int mode);
   /**
    * @brief Select the gamepad emulation policy for the currently running app.
-   * @param mode 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4.
+   * @param mode 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4, 4=DualSense.
    */
   void
   set_gamepad_mode(int mode);
+  /**
+   * @brief Hot-apply the persisted global gamepad policy for future allocations.
+   * @param preference One of: auto, x360, ds4, ds5.
+   */
+  void
+  set_global_gamepad_mode(std::string_view preference);
   /**
    * @brief Publish the client-declared controller type for the upcoming session.
    * @param pref Empty = undeclared (host-side selection chain applies),

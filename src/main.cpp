@@ -445,7 +445,7 @@ main(int argc, char *argv[]) {
   }
   if (ds5_settings_result.status == ds5_config::load_status_t::INVALID ||
       !ds5_config::configure(std::move(ds5_settings_result.settings))) {
-    BOOST_LOG(error) << "DualSense configuration is invalid; DualSense emulation is disabled"sv;
+    BOOST_LOG(error) << "DualSense configuration is invalid; using default DualSense settings"sv;
     ds5_config::configure({});
   }
 #endif

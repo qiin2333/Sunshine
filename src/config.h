@@ -301,6 +301,9 @@ namespace config {
   bool
   update_config(const std::map<std::string, std::string> &updates);
 
+  std::optional<std::map<std::string, std::string>>
+  get_config_snapshot();
+
   bool
   update_full_config(const std::map<std::string, std::string> &fullConfig);
 
@@ -320,7 +323,7 @@ namespace config {
 
   /**
    * Persist per-client settings and publish them to the running process.
-   * Unlike update_config(), an unchanged value is still a successful save.
+   * An unchanged value is treated as a successful save.
    */
   bool
   save_clients_config(const std::string &clients);

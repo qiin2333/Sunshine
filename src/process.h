@@ -70,7 +70,7 @@ namespace proc {
     bool auto_detach;
     bool wait_all;
     int mouse_mode;  ///< 0=auto (use global config), 1=force virtual mouse, 2=force SendInput
-    int gamepad_mode;  ///< 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4
+    int gamepad_mode;  ///< 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4, 4=DualSense
     std::chrono::seconds exit_timeout;
     std::optional<rtsp_stream::synthetic_hdr_config_t> rtx_hdr;
   };

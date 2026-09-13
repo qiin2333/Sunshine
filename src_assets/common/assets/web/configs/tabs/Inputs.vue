@@ -186,12 +186,21 @@ onBeforeUnmount(() => {
           </template>
           
           <template #windows>
+            <option value="ds5">{{ $t('config.gamepad_ds5') }}</option>
             <option value="ds4">{{ $t('config.gamepad_ds4') }}</option>
             <option value="x360">{{ $t('config.gamepad_x360') }}</option>
           </template>
         </PlatformLayout>
       </select>
       <div class="form-text">{{ $t('config.gamepad_desc') }}</div>
+      <div
+        v-if="platform === 'windows' && config.gamepad === 'ds5'"
+        class="alert alert-warning mt-2 mb-0"
+        role="note"
+      >
+        <i class="fas fa-info-circle me-2" aria-hidden="true"></i>
+        {{ $t('config.gamepad_ds5_component_hint_windows') }}
+      </div>
     </div>
 
     <div class="accordion mb-3" v-if="config.gamepad === 'ds4'">

@@ -44,8 +44,7 @@ namespace ds5_config::api {
     };
 
     bool same_values(const settings_t &left, const settings_t &right) noexcept {
-      return left.enabled == right.enabled &&
-             left.audio_haptics == right.audio_haptics &&
+      return left.audio_haptics == right.audio_haptics &&
              left.legacy_strength == right.legacy_strength &&
              left.legacy_curve == right.legacy_curve &&
              left.legacy_noise_gate == right.legacy_noise_gate &&
@@ -57,7 +56,7 @@ namespace ds5_config::api {
       stream.imbue(std::locale::classic());
       stream << "\"ds5-v1-" << std::dec << settings.revision << '-'
              << (persisted ? '1' : '0') << '-'
-             << (settings.enabled ? '1' : '0') << (settings.audio_haptics ? '1' : '0')
+             << (settings.audio_haptics ? '1' : '0')
              << (settings.genshin_compatibility ? '1' : '0')
              << '-' << std::hex << std::setfill('0')
              << std::setw(16) << std::bit_cast<std::uint64_t>(settings.legacy_strength)
@@ -156,7 +155,6 @@ namespace ds5_config::api {
         {"applied", true},
         {"persisted", persisted},
         {"revision", settings.revision},
-        {"ds5_enabled", settings.enabled},
         {"ds5_audio_haptics", settings.audio_haptics},
         {"ds5_legacy_haptics_strength", settings.legacy_strength},
         {"ds5_legacy_haptics_curve", settings.legacy_curve},
@@ -168,8 +166,7 @@ namespace ds5_config::api {
     }
 
     bool parse_settings(const json &input, settings_t &settings) {
-      if (!input.is_object() || input.size() != 6 ||
-          !input.contains("ds5_enabled") || !input["ds5_enabled"].is_boolean() ||
+      if (!input.is_object() || input.size() != 5 ||
           !input.contains("ds5_audio_haptics") || !input["ds5_audio_haptics"].is_boolean() ||
           !input.contains("ds5_legacy_haptics_strength") || !input["ds5_legacy_haptics_strength"].is_number() ||
           !input.contains("ds5_legacy_haptics_curve") || !input["ds5_legacy_haptics_curve"].is_number() ||
@@ -178,7 +175,6 @@ namespace ds5_config::api {
         return false;
       }
       settings = {
-        input["ds5_enabled"].get<bool>(),
         input["ds5_audio_haptics"].get<bool>(),
         input["ds5_legacy_haptics_strength"].get<double>(),
         input["ds5_legacy_haptics_curve"].get<double>(),
@@ -264,8 +260,7 @@ namespace ds5_config::api {
         case update_status_t::APPLIED:
           BOOST_LOG(info) << "DualSense configuration saved and hot-applied at revision "
                           << result.state.settings.revision
-                          << " (enabled=" << result.state.settings.enabled
-                          << ", audio_haptics=" << result.state.settings.audio_haptics
+                          << " (audio_haptics=" << result.state.settings.audio_haptics
                           << ", genshin_compatibility=" << result.state.settings.genshin_compatibility << ')';
           write_json(
             std::move(response),

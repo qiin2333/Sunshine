@@ -1581,6 +1581,109 @@ namespace confighttp {
   }
 
   void
+  getGamepadConfig(resp_https_t response, req_https_t request) {
+    if (!authenticate(response, request)) return;
+
+    pt::ptree outputTree;
+    auto response_guard = util::fail_guard([&]() {
+      std::ostringstream data;
+      pt::write_json(data, outputTree);
+      response->write(data.str());
+    });
+
+    const auto config_snapshot = config::get_config_snapshot();
+    if (!config_snapshot) {
+      outputTree.put("status", "false");
+      outputTree.put("error", "failed to read controller configuration");
+      return;
+    }
+
+    const auto get_value = [&](std::string_view key, std::string_view fallback) {
+      const auto entry = config_snapshot->find(std::string {key});
+      return entry == config_snapshot->end() ? std::string {fallback} : entry->second;
+    };
+    outputTree.put("status", "true");
+    outputTree.put("gamepad", get_value("gamepad", "auto"));
+    outputTree.put("motion_as_ds4", get_value("motion_as_ds4", "true"));
+    outputTree.put("touchpad_as_ds4", get_value("touchpad_as_ds4", "true"));
+    outputTree.put("ds4_back_as_touchpad_click", get_value("ds4_back_as_touchpad_click", "true"));
+    outputTree.put("enable_dsu_server", get_value("enable_dsu_server", "false"));
+    outputTree.put("dsu_server_port", get_value("dsu_server_port", "26760"));
+  }
+
+  void
+  saveGamepadConfig(resp_https_t response, req_https_t request) {
+    if (!check_content_type(response, request, "application/json")) return;
+    if (!authenticate(response, request)) return;
+
+    pt::ptree outputTree;
+    auto response_guard = util::fail_guard([&]() {
+      std::ostringstream data;
+      pt::write_json(data, outputTree);
+      response->write(data.str());
+    });
+
+    try {
+      pt::ptree inputTree;
+      std::stringstream body;
+      body << request->content.rdbuf();
+      pt::read_json(body, inputTree);
+      if (inputTree.empty() || inputTree.size() > 6) {
+        throw std::invalid_argument("controller configuration patch must contain 1 to 6 fields");
+      }
+
+      const std::set<std::string> boolean_fields {
+        "ds4_back_as_touchpad_click",
+        "enable_dsu_server",
+        "motion_as_ds4",
+        "touchpad_as_ds4",
+      };
+      std::map<std::string, std::string> updates;
+      for (const auto &[key, node] : inputTree) {
+        if (!node.empty()) {
+          throw std::invalid_argument("controller configuration fields must be scalar values");
+        }
+        const auto value = node.get_value<std::string>();
+        if (key == "gamepad") {
+          if (value != "auto"sv && value != "x360"sv && value != "ds4"sv && value != "ds5"sv) {
+            throw std::invalid_argument("invalid gamepad mode");
+          }
+        }
+        else if (boolean_fields.contains(key)) {
+          if (value != "true"sv && value != "false"sv) {
+            throw std::invalid_argument("controller boolean fields must be true or false");
+          }
+        }
+        else if (key == "dsu_server_port") {
+          std::size_t parsed = 0;
+          const auto port = std::stoi(value, &parsed);
+          if (parsed != value.size() || port < 1024 || port > 65535) {
+            throw std::invalid_argument("DSU port must be between 1024 and 65535");
+          }
+        }
+        else {
+          throw std::invalid_argument("unsupported controller configuration field");
+        }
+        if (!updates.emplace(key, value).second) {
+          throw std::invalid_argument("duplicate controller configuration field");
+        }
+      }
+
+      if (!config::update_config(updates)) {
+        outputTree.put("status", "false");
+        outputTree.put("error", "failed to persist controller configuration");
+        return;
+      }
+      outputTree.put("status", "true");
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(warning) << "SaveGamepadConfig: "sv << e.what();
+      outputTree.put("status", "false");
+      outputTree.put("error", "invalid controller configuration patch");
+    }
+  }
+
+  void
   getHdrEnhancedConfig(resp_https_t response, req_https_t request) {
     if (!authenticate(response, request) || !require_localhost(response, request, "HDR configuration")) return;
     hdr_enhanced::api::get_config(response);
@@ -3971,6 +4074,8 @@ namespace confighttp {
     server.resource["^/api/apps$"]["POST"] = saveApp;
     server.resource["^/api/config$"]["GET"] = getConfig;
     server.resource["^/api/config$"]["POST"] = saveConfig;
+    server.resource["^/api/gamepad/config$"]["GET"] = getGamepadConfig;
+    server.resource["^/api/gamepad/config$"]["POST"] = saveGamepadConfig;
     server.resource["^/api/hdr-enhanced/config$"]["GET"] = getHdrEnhancedConfig;
     server.resource["^/api/hdr-enhanced/config$"]["POST"] = saveHdrEnhancedConfig;
     server.resource["^/api/hdr-enhanced/status$"]["GET"] = getHdrEnhancedStatus;

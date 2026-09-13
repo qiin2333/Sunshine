@@ -47,6 +47,11 @@ namespace platf {
   }
 
   void
+  set_global_gamepad_mode(std::string_view) {
+    // Runtime gamepad selection is currently implemented by the Windows backend.
+  }
+
+  void
   set_client_gamepad_pref(std::string pref) {
     // Client-declared gamepad selection only overrides the Windows ViGEm backend.
   }

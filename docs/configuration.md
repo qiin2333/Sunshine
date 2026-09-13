@@ -290,8 +290,8 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
     <tr>
         <td>ds5</td>
-        <td>DualShock 5 controller (PS5)
-            @note{This option applies to Linux only.}</td>
+        <td>DualSense controller (PS5)
+            @note{On Windows, this option requires the optional DualSense component. If the component is unavailable, Sunshine falls back to automatic gamepad selection. Saved changes apply to newly allocated controllers without restarting Sunshine.}</td>
     </tr>
     <tr>
         <td>switch</td>

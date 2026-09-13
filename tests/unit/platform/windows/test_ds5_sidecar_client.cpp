@@ -9,7 +9,6 @@
 
   #include <chrono>
 
-  #include "src/ds5/config.h"
   #include "src/platform/windows/ds5/ds5_sidecar_client.h"
   #include "src/platform/windows/virtual_device_host/protocol.h"
   #include <gtest/gtest-spi.h>
@@ -18,23 +17,6 @@
 namespace {
   using get_environment_fn_t = DWORD(WINAPI *)(LPCWSTR, LPWSTR, DWORD);
   using set_environment_fn_t = BOOL(WINAPI *)(LPCWSTR, LPCWSTR);
-
-  struct config_scope_t {
-    config_scope_t():
-        settings(ds5_config::current()) {}
-
-    ~config_scope_t() {
-      ds5_config::configure(settings);
-    }
-
-    void enable() {
-      auto updated = settings;
-      updated.enabled = true;
-      ds5_config::configure(updated);
-    }
-
-    ds5_config::settings_t settings;
-  };
 
   struct handle_scope_t {
     explicit handle_scope_t(HANDLE value): handle(value) {}
@@ -237,8 +219,6 @@ TEST(Ds5SidecarClientTests, UnassignedIndexIsNotOwned) {
 }
 
 TEST(Ds5SidecarClientTests, AllocThenFreeCancelsBlockedReader) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"blocked-reader");
   const auto reader_name = L"Local\\sunshine-ds5-test-reader-" + events.suffix;
@@ -274,8 +254,6 @@ TEST(Ds5SidecarClientTests, AllocThenFreeCancelsBlockedReader) {
 }
 
 TEST(Ds5SidecarClientTests, AttachSurvivesInterleavedAsyncFeedback) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"interleaved-feedback");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;
@@ -308,8 +286,6 @@ TEST(Ds5SidecarClientTests, AttachSurvivesInterleavedAsyncFeedback) {
 }
 
 TEST(Ds5SidecarClientTests, RejectsCompositeAttachWithoutAudioEndpoint) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"audio-endpoint");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;
@@ -324,8 +300,6 @@ TEST(Ds5SidecarClientTests, RejectsCompositeAttachWithoutAudioEndpoint) {
 }
 
 TEST(Ds5SidecarClientTests, FallsBackToHidWhenPeerLacksAudioPolicyCapability) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"legacy-capabilities");
   environment_scope_t legacy_capabilities(L"SUNSHINE_DS5_TEST_LEGACY_CAPABILITIES", L"1");
@@ -342,8 +316,6 @@ TEST(Ds5SidecarClientTests, FallsBackToHidWhenPeerLacksAudioPolicyCapability) {
 }
 
 TEST(Ds5SidecarClientTests, SendsNegotiatedGenshinCompatibilityAttachFlag) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"genshin-compatibility");
   environment_scope_t enable_compatibility(
@@ -365,8 +337,6 @@ TEST(Ds5SidecarClientTests, SendsNegotiatedGenshinCompatibilityAttachFlag) {
 }
 
 TEST(Ds5SidecarClientTests, RejectsGenshinCompatibilityWithoutSidecarCapability) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"genshin-capability-required");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;
@@ -381,8 +351,6 @@ TEST(Ds5SidecarClientTests, RejectsGenshinCompatibilityWithoutSidecarCapability)
 }
 
 TEST(Ds5SidecarClientTests, RelaunchesOnceAfterUnexpectedExit) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"recover-once");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;
@@ -410,8 +378,6 @@ TEST(Ds5SidecarClientTests, RelaunchesOnceAfterUnexpectedExit) {
 }
 
 TEST(Ds5SidecarClientTests, FallsBackToHidOnlyWhenVirtualAudioBecomesDefault) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"audio-policy-fallback");
   environment_scope_t enable_policy_fallback(L"SUNSHINE_DS5_TEST_AUDIO_POLICY_FALLBACK", L"1");
@@ -440,8 +406,6 @@ TEST(Ds5SidecarClientTests, FallsBackToHidOnlyWhenVirtualAudioBecomesDefault) {
 }
 
 TEST(Ds5SidecarClientTests, FreeCancelsPendingRecovery) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"cancel-recovery");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;
@@ -474,8 +438,6 @@ TEST(Ds5SidecarClientTests, FreeCancelsPendingRecovery) {
 }
 
 TEST(Ds5SidecarClientTests, ReallocatesAfterRecoveryFailure) {
-  config_scope_t restore_config;
-  restore_config.enable();
 
   event_namespace_scope_t events(L"recovery-failure");
   const auto continue_name = L"Local\\sunshine-ds5-test-continue-" + events.suffix;

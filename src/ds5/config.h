@@ -19,7 +19,6 @@ namespace ds5_config {
   inline constexpr double MAX_NOISE_GATE = 0.060;
 
   struct settings_t {
-    bool enabled = false;
     bool audio_haptics = true;
     double legacy_strength = 1.0;
     double legacy_curve = 0.5;

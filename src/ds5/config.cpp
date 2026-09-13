@@ -116,7 +116,7 @@ namespace ds5_config {
 
   bool validate(const settings_t &settings) noexcept {
     return settings.revision > 0 &&
-           (!settings.genshin_compatibility || (settings.enabled && settings.audio_haptics)) &&
+           (!settings.genshin_compatibility || settings.audio_haptics) &&
            std::isfinite(settings.legacy_strength) &&
            settings.legacy_strength >= MIN_STRENGTH && settings.legacy_strength <= MAX_STRENGTH &&
            std::isfinite(settings.legacy_curve) &&
@@ -171,18 +171,18 @@ namespace ds5_config {
       }
 
       const auto input = nlohmann::json::parse(contents);
-      if (!input.is_object() || input.size() != 6 ||
-          !input.contains("ds5_enabled") || !input["ds5_enabled"].is_boolean() ||
+      if (!input.is_object() || (input.size() != 5 && input.size() != 6) ||
           !input.contains("ds5_audio_haptics") || !input["ds5_audio_haptics"].is_boolean() ||
           !input.contains("ds5_legacy_haptics_strength") || !input["ds5_legacy_haptics_strength"].is_number() ||
           !input.contains("ds5_legacy_haptics_curve") || !input["ds5_legacy_haptics_curve"].is_number() ||
           !input.contains("ds5_legacy_haptics_noise_gate") || !input["ds5_legacy_haptics_noise_gate"].is_number() ||
-          !input.contains("ds5_genshin_compatibility") || !input["ds5_genshin_compatibility"].is_boolean()) {
+          !input.contains("ds5_genshin_compatibility") || !input["ds5_genshin_compatibility"].is_boolean() ||
+          (input.size() == 6 &&
+           (!input.contains("ds5_enabled") || !input["ds5_enabled"].is_boolean()))) {
         return {load_status_t::INVALID, {}};
       }
 
       settings_t settings {
-        input["ds5_enabled"].get<bool>(),
         input["ds5_audio_haptics"].get<bool>(),
         input["ds5_legacy_haptics_strength"].get<double>(),
         input["ds5_legacy_haptics_curve"].get<double>(),
@@ -207,7 +207,6 @@ namespace ds5_config {
       remove_temp_file(temporary_path);
 
       const nlohmann::json output {
-        {"ds5_enabled", settings.enabled},
         {"ds5_audio_haptics", settings.audio_haptics},
         {"ds5_legacy_haptics_strength", settings.legacy_strength},
         {"ds5_legacy_haptics_curve", settings.legacy_curve},
