@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>后处理链 · 视觉稿 — Sunshine WebUI</title>
+<style>
+  /* ============ tokens（对应 Sunshine WebUI --ui-* 变量） ============ */
+  :root {
+    --bg: #121417;
+    --panel: #1a1d22;
+    --panel-2: #20242a;
+    --border: #2b3038;
+    --border-soft: #23272e;
+    --text: #e4e7eb;
+    --text-2: #99a0aa;
+    --accent: #45a171;
+    --accent-soft: rgba(69, 171, 113, .12);
+    --warn: #d29922;
+    --warn-soft: rgba(210, 153, 34, .12);
+    --danger: #e5534b;
+    --danger-soft: rgba(229, 83, 75, .10);
+    --info: #58a6ff;
+    --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 36px 20px 64px;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+
+  /* ============ 页头 ============ */
+  .pagehead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .pagehead h1 { font-size: 18px; font-weight: 600; letter-spacing: .01em; }
+  .app-chip {
+    font-family: var(--mono); font-size: 11px; color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px;
+  }
+  .pagesub { color: var(--text-2); font-size: 12.5px; margin-bottom: 22px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card-title { font-size: 13.5px; font-weight: 600; margin-bottom: 16px; }
+
+  /* ============ 链轨道 ============ */
+  .rail { position: relative; padding-left: 26px; }
+  .rail::before {
+    content: ""; position: absolute; left: 5px; top: 14px; bottom: 14px;
+    width: 2px; background: var(--border); border-radius: 1px;
+  }
+  .node { position: relative; margin-bottom: 4px; }
+  .node .dot {
+    position: absolute; left: -26px; top: 18px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--panel); border: 2px solid var(--text-2);
+  }
+  .node.fixed .dot { border-color: var(--text-2); border-style: solid; width: 10px; height: 10px; top: 19px; }
+  .node.ok    .dot { border-color: var(--accent); }
+  .node.warn  .dot { border-color: var(--warn); }
+  .node.fail  .dot { border-color: var(--danger); }
+  .node.dashed .box { border-style: dashed; }
+
+  .edge {
+    font-family: var(--mono); font-size: 11px; color: var(--text-2);
+    padding: 5px 0 5px 2px; display: flex; align-items: center; gap: 6px;
+  }
+  .edge::before { content: "↓"; color: var(--border); font-size: 12px; }
+  .edge .tag {
+    background: var(--panel-2); border: 1px solid var(--border-soft);
+    border-radius: 4px; padding: 0 6px; color: var(--text-2);
+  }
+  .edge .tag.hot { color: var(--warn); border-color: rgba(210,153,34,.35); }
+
+  .box {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 14px;
+  }
+  .box:hover { border-color: #3a4049; }
+  .box-head { display: flex; align-items: center; gap: 10px; }
+  .stage-no {
+    font-family: var(--mono); font-size: 11px; color: var(--text-2);
+    width: 14px; text-align: right; flex-shrink: 0;
+  }
+  .stage-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .kind-chip {
+    font-size: 10.5px; color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 6px;
+  }
+  .box-sub { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+  .box-controls { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+  .ctl {
+    background: none; border: 1px solid transparent; border-radius: 5px;
+    color: var(--text-2); font-size: 12px; padding: 2px 7px; cursor: pointer;
+    font-family: inherit;
+  }
+  .ctl:hover { border-color: var(--border); color: var(--text); }
+  .ctl.danger:hover { color: var(--danger); border-color: rgba(229,83,75,.4); }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .b {
+    font-family: var(--mono); font-size: 11px; padding: 1px 7px;
+    border-radius: 5px; border: 1px solid var(--border-soft);
+    background: rgba(255,255,255,.03); color: var(--text-2);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .b.ok     { color: var(--accent); border-color: rgba(69,171,113,.35); background: var(--accent-soft); }
+  .b.warn   { color: var(--warn);   border-color: rgba(210,153,34,.35); background: var(--warn-soft); }
+  .b.danger { color: var(--danger); border-color: rgba(229,83,75,.35);  background: var(--danger-soft); }
+  .b .dot2 { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* 排除态（校验失败段） */
+  .excluded .box { opacity: .6; border-style: dashed; }
+  .excluded .stage-name { text-decoration: line-through; font-weight: 400; }
+
+  /* 添加 DLL + 探测列表 */
+  .add-row { position: relative; margin-top: 10px; }
+  .btn-add {
+    background: none; border: 1px dashed var(--border); border-radius: 8px;
+    color: var(--text-2); font-size: 12.5px; padding: 7px 14px; cursor: pointer;
+    font-family: inherit; width: 100%;
+  }
+  .btn-add:hover { color: var(--text); border-color: #3a4049; }
+  .probe {
+    margin-top: 8px; border: 1px solid var(--border-soft); border-radius: 8px;
+    background: #171a1f; overflow: hidden;
+  }
+  .probe-head {
+    padding: 6px 12px; font-size: 11px; color: var(--text-2);
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; justify-content: space-between;
+  }
+  .probe-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; font-size: 12.5px;
+  }
+  .probe-row + .probe-row { border-top: 1px solid var(--border-soft); }
+  .probe-row .file { font-family: var(--mono); font-size: 12px; }
+  .probe-row .why { color: var(--text-2); font-size: 11.5px; margin-left: auto; }
+  .probe-row.addable { cursor: pointer; }
+  .probe-row.addable:hover { background: rgba(255,255,255,.03); }
+
+  /* ============ 校验摘要栏 ============ */
+  .validate {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-soft);
+  }
+  .v-item { font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .v-item.ok     { color: var(--accent); }
+  .v-item.warn   { color: var(--warn); }
+  .v-item.danger { color: var(--danger); }
+  .v-sep { color: var(--border); }
+  .btn-primary {
+    margin-left: auto;
+    background: var(--accent); color: #0d130f;
+    border: none; border-radius: 7px; padding: 7px 16px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+
+  /* ============ 运行时面板 ============ */
+  .rt-row {
+    display: grid; grid-template-columns: 1fr 110px 90px 70px;
+    gap: 10px; align-items: center;
+    padding: 8px 2px; font-size: 12.5px;
+  }
+  .rt-row + .rt-row { border-top: 1px solid var(--border-soft); }
+  .rt-row.head { color: var(--text-2); font-size: 11px; padding-bottom: 4px; }
+  .rt-name { display: flex; align-items: center; gap: 8px; }
+  .st { display: inline-flex; align-items: center; gap: 6px; }
+  .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .st.warn i { background: var(--warn); }
+  .rt-metric, .rt-ms { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); text-align: right; }
+  .rt-note { margin-top: 12px; color: var(--text-2); font-size: 11.5px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  .rt-note code { font-family: var(--mono); font-size: 11px; color: var(--info); }
+
+  a { color: var(--info); }
+  code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="pagehead">
+    <h1>后处理链</h1>
+    <span class="app-chip">应用 · Cyberpunk 2077</span>
+  </div>
+  <p class="pagesub">链中每一节处理上一节的输出。校验器自动补齐域转换，并拦截跑不起来的组合。</p>
+
+  <!-- ============ 链编辑器 ============ -->
+  <div class="card">
+    <div class="card-title">编辑链</div>
+
+    <div class="rail">
+
+      <!-- 捕获适配腿（固定） -->
+      <div class="node fixed">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-name" style="font-weight:400">捕获 · VDD</span>
+            <span class="kind-chip">固定</span>
+          </div>
+          <div class="box-sub">源显示保持 SDR，由链生成流画质</div>
+        </div>
+      </div>
+
+      <div class="edge"><span class="tag">BGRA8 · sdr_rec709 · 1080p</span></div>
+
+      <!-- stage 1: VSR -->
+      <div class="node ok">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-no">1</span>
+            <span class="stage-name">nvidia_vsr.dll</span>
+            <span class="kind-chip">AI 超分</span>
+            <span class="box-controls">
+              <button class="ctl">参数</button><button class="ctl">↑</button>
+              <button class="ctl">↓</button><button class="ctl danger">移除</button>
+            </span>
+          </div>
+          <div class="badges">
+            <span class="b"><span class="dot2"></span>已加载</span>
+            <span class="b">BGRA8 → BGRA8</span>
+            <span class="b ok">1080p → 4K · 2.0×</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="edge"><span class="tag">BGRA8 · 4K</span></div>
+
+      <!-- stage 2: TrueHDR -->
+      <div class="node ok">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-no">2</span>
+            <span class="stage-name">foundation_truehdr_backend.dll</span>
+            <span class="kind-chip">SDR → HDR</span>
+            <span class="box-controls">
+              <button class="ctl">参数</button><button class="ctl">↑</button>
+              <button class="ctl">↓</button><button class="ctl danger">移除</button>
+            </span>
+          </div>
+          <div class="badges">
+            <span class="b"><span class="dot2"></span>已加载</span>
+            <span class="b">BGRA8 → FP16 · scRGB</span>
+            <span class="b">4K · 1.0×</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="edge"><span class="tag">FP16 · scRGB · 4K</span></div>
+
+      <!-- stage 3: LSFG（时序） -->
+      <div class="node warn">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-no">3</span>
+            <span class="stage-name">LSFG.dll</span>
+            <span class="kind-chip">插帧</span>
+            <span class="box-controls">
+              <button class="ctl">参数</button><button class="ctl">↑</button>
+              <button class="ctl">↓</button><button class="ctl danger">移除</button>
+            </span>
+          </div>
+          <div class="badges">
+            <span class="b"><span class="dot2"></span>已加载</span>
+            <span class="b">FP16 scRGB → FP16 scRGB</span>
+            <span class="b warn">时序 · 帧率 ×2（60 → 120）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="edge">
+        <span class="tag">FP16 · scRGB · 4K</span>
+        <span class="tag hot">×2 帧</span>
+      </div>
+
+      <!-- stage 4: 校验失败，已排除 -->
+      <div class="node fail excluded">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-no">—</span>
+            <span class="stage-name">my_sharpen.dll</span>
+            <span class="b danger">已从计划排除</span>
+            <span class="box-controls"><button class="ctl danger">移除</button></span>
+          </div>
+          <div class="badges">
+            <span class="b danger">校验失败 · ABI 1 不受支持（需要 v2）</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加 DLL + 探测列表 -->
+      <div class="add-row">
+        <button class="btn-add">＋ 添加 DLL（列出 postprocess 目录）</button>
+        <div class="probe">
+          <div class="probe-head"><span>postprocess 目录探测结果</span><span>加载即校验 · 不自动执行</span></div>
+          <div class="probe-row addable">
+            <span class="file">nvidia_sharpen.dll</span>
+            <span class="b ok">v2 · BGRA8 → BGRA8</span>
+            <span class="why">点击加入链尾</span>
+          </div>
+          <div class="probe-row">
+            <span class="file">legacy_fx.dll</span>
+            <span class="b danger">ABI 1（需要 v2）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="edge"><span class="tag">FP16 · scRGB · 4K ×120fps</span></div>
+
+      <!-- 内置转换（自动插入） -->
+      <div class="node dashed">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-name" style="font-weight:400">内置转换</span>
+            <span class="kind-chip">自动插入</span>
+          </div>
+          <div class="box-sub">FP16 scRGB → P010 · PQ · BT.2020</div>
+        </div>
+      </div>
+
+      <div class="edge"><span class="tag">P010 · pq_bt2020 · 4K ×120fps</span></div>
+
+      <!-- 编码适配腿（固定） -->
+      <div class="node fixed">
+        <span class="dot"></span>
+        <div class="box">
+          <div class="box-head">
+            <span class="stage-name" style="font-weight:400">编码 · HEVC Main10</span>
+            <span class="kind-chip">固定</span>
+          </div>
+          <div class="box-sub">插值帧的 L1 / MaxSCL 元数据在适配腿自动合成</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 校验摘要 -->
+    <div class="validate">
+      <span class="v-item ok">✓ 域链可达</span><span class="v-sep">·</span>
+      <span class="v-item warn">⚠ 时序段 ×2（码率预估 ~2.1×）</span><span class="v-sep">·</span>
+      <span class="v-item ok">✓ IDR 策略已注入</span><span class="v-sep">·</span>
+      <span class="v-item danger">✕ 1 段已排除</span>
+      <button class="btn-primary">应用并重新校验</button>
+    </div>
+  </div>
+
+  <!-- ============ 运行时状态 ============ -->
+  <div class="card">
+    <div class="card-title">运行时状态（活动会话）</div>
+    <div class="rt-row head">
+      <span>阶段</span><span style="text-align:left">状态</span>
+      <span style="text-align:right">单帧耗时</span><span style="text-align:right">帧率</span>
+    </div>
+    <div class="rt-row">
+      <span class="rt-name"><span class="stage-no">1</span> nvidia_vsr.dll</span>
+      <span class="st"><i></i>active</span>
+      <span class="rt-ms">3.1 ms</span><span class="rt-metric">60 fps</span>
+    </div>
+    <div class="rt-row">
+      <span class="rt-name"><span class="stage-no">2</span> foundation_truehdr_backend.dll</span>
+      <span class="st"><i></i>active</span>
+      <span class="rt-ms">2.2 ms</span><span class="rt-metric">60 fps</span>
+    </div>
+    <div class="rt-row">
+      <span class="rt-name"><span class="stage-no">3</span> LSFG.dll</span>
+      <span class="st"><i></i>active</span>
+      <span class="rt-ms">1.1 ms</span><span class="rt-metric">60 → 120 fps</span>
+    </div>
+    <div class="rt-note">
+      状态由 <code>/api/runtime/postprocess</code> 逐槽上报（沿用 <a href="#">#1031</a> 的 hint 引导模式）：
+      某段失败时该行转为 ⚠ degraded 并给出可操作提示，其余段不受影响。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
