@@ -74,7 +74,7 @@ internal static class ProtocolSelfTest
     {
         if (!DeviceRegistry.HasPinnedMicrophoneRuntime)
             throw new InvalidOperationException(
-                "The composite microphone prototype requires the pinned HIDMaestro 1.6.2.0 runtime");
+                "The composite microphone prototype requires the pinned HIDMaestro 1.7.3.0 runtime");
 
         var pipeName = $"sunshine-microphone-prototype-{Environment.ProcessId}-{Guid.NewGuid():N}";
         using var stopping = new CancellationTokenSource(TimeSpan.FromSeconds(45));
@@ -383,7 +383,7 @@ internal static class ProtocolSelfTest
         var result = JsonSerializer.Serialize(new
         {
             protocol = Protocol.Version,
-            profile = composite ? "dualsense-composite" : "dualsense",
+            profile = composite ? "dualsense-composite" : "dualsense-hidonly",
             hello = true,
             attached = true,
             four_channel_audio = capabilities.HasFlag(Protocol.Capability.AudioFourChannel),
@@ -736,6 +736,9 @@ internal static class ProtocolSelfTest
 
     private static void VerifyProfileSelection()
     {
+        Require(DeviceRegistry.SelectProfileId(
+                0, Protocol.AttachFlags.None, true, true) == "dualsense-hidonly",
+            "HID-only attach profile selection");
         Require(DeviceRegistry.SelectProfileId(
                 1, Protocol.AttachFlags.GenshinCompatibilityIdentity, true, true) ==
                 DualSenseHapticsAudio.GenshinCompatibilityProfileId,

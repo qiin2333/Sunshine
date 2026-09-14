@@ -7,7 +7,7 @@ process now uses a `VirtualDeviceHostServer` and `DeviceRegistry` internally.
 It owns virtual devices and exposes the versioned `SDS5` named-pipe protocol.
 The helper does not contain HIDMaestro binaries.
 
-Build against the pinned upstream v1.6.2 runtime:
+Build against the pinned upstream v1.7.3 runtime:
 
 ```powershell
 dotnet build -c Release `
@@ -34,6 +34,14 @@ ending the sidecar.
 Disconnecting the owning pipe disposes every device created by
 that connection. Standard `dualsense` uses UMDF2; `dualsense-composite`
 enables the USB composite HID/audio profile and authored haptics PCM.
+HID-only attaches actually serve the derived `dualsense-hidonly` profile:
+its top-level collection usage is Joystick (0x04) instead of Game Pad
+(0x05), because the root-enumerated device never gets the native DualSense
+decoder and Windows' generic gamepad template reads the Sony byte layout as
+a half-pressed right trigger plus a full-up right stick at rest, which
+win32k turns into perpetual desktop navigation (issue #1056). As a
+Joystick the device is only exposed through RawGameController/generic HID,
+where every usage decodes correctly.
 The optional Genshin compatibility attach flag derives a third profile from
 `dualsense-composite` at runtime. It preserves the Sony VID/PID, descriptors,
 and four-channel layout while changing only the USB product string from
@@ -50,7 +58,7 @@ virtual microphone. Normal startup intentionally does not advertise them;
 only the explicit development prototype can enable those capabilities.
 
 The Phase 2 composite-profile microphone path is development-only and requires
-both the exact HIDMaestro 1.6.2.0 runtime and an explicit opt-in. Its elevated
+both the exact HIDMaestro 1.7.3.0 runtime and an explicit opt-in. Its elevated
 attach/PCM/flush/destroy smoke test is:
 
 ```powershell

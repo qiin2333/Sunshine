@@ -10,7 +10,7 @@
   </PropertyGroup>
   <Target Name="RequireHIDMaestro" BeforeTargets="ResolveReferences"
           Condition="!Exists('$(HIDMaestroCorePath)')">
-    <Error Text="HIDMaestro.Core.dll was not found. Set HIDMaestroCorePath to the pinned upstream v1.6.2 runtime." />
+    <Error Text="HIDMaestro.Core.dll was not found. Set HIDMaestroCorePath to the pinned upstream v1.7.3 runtime." />
   </Target>
   <ItemGroup>
     <Reference Include="HIDMaestro.Core">
@@ -28,5 +28,6 @@
          hardware behaviour. -->
     <EmbeddedResource Include="profiles\dualsense.json" LogicalName="Sunshine.Ds5Sidecar.profiles.dualsense.json" />
     <EmbeddedResource Include="profiles\dualsense-composite.json" LogicalName="Sunshine.Ds5Sidecar.profiles.dualsense-composite.json" />
+    <EmbeddedResource Include="profiles\dualsense-hidonly.json" LogicalName="Sunshine.Ds5Sidecar.profiles.dualsense-hidonly.json" />
   </ItemGroup>
 </Project>
